@@ -1,5 +1,5 @@
-import { Client, IntentsBitField } from 'discord.js';
-import { Octokit } from "octokit";
+import { Client, IntentsBitField, TextChannel } from 'discord.js';
+import { Octokit } from "@octokit/rest";
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -50,7 +50,7 @@ const checkNewGoodFirstIssues = async () => {
 
         if (issueDate === today && (!lastCheckedIssueId || issues[0].id !== lastCheckedIssueId)) {
             const channel = client.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
-            if (channel) {
+            if (channel && channel.type === 'GUILD_TEXT') {
                 await channel.send(`Good news, a new 'good first issue' was created today:\n**${issues[0].title}** (#${issues[0].number})\n${issues[0].html_url}`);
                 console.log(`Message sent for issue #${issues[0].number}`);
                 lastCheckedIssueId = issues[0].id;
@@ -66,8 +66,13 @@ const checkNewGoodFirstIssues = async () => {
 };
 
 client.once('ready', () => {
-    console.log(`Logged in as ${client.user.tag}!`);
-    checkNewGoodFirstIssues().finally(() => client.destroy()); // Destroy client after sending messages
+    if (client.user) {  // Check if client.user is not null
+        console.log(`Logged in as ${client.user.tag}!`);
+        checkNewGoodFirstIssues().finally(() => client.destroy()); // Destroy client after sending messages
+    } else {
+        console.log("Bot is ready, but client.user is not set.");
+        client.destroy();  // Consider handling this situation more gracefully
+    }
 });
 
 client.login(DISCORD_TOKEN).catch(console.error);
