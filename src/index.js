@@ -8,7 +8,6 @@ const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO_OWNER = "winglang";
 const GITHUB_REPO_NAME = "wing";
-const CHECK_INTERVAL = 60 * 1000; // Check every 60 seconds
 
 const client = new Client({
     intents: [
@@ -16,14 +15,12 @@ const client = new Client({
         IntentsBitField.Flags.GuildMembers,
         IntentsBitField.Flags.GuildMessages,
         IntentsBitField.Flags.MessageContent, 
-
     ],
 });
 
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 let lastCheckedIssueId = null;
-let initialized = false;
 
 const fetchIssues = async () => {
     try {
@@ -34,7 +31,7 @@ const fetchIssues = async () => {
             state: 'open',
             sort: 'created',
             direction: 'desc',
-            per_page: 20
+            per_page: 1
         });
 
         return issues;
@@ -48,37 +45,20 @@ const checkNewGoodFirstIssues = async () => {
     const issues = await fetchIssues();
 
     if (issues.length > 0) {
-        const newIssues = [];
+        const today = new Date().toISOString().slice(0, 10);
+        const issueDate = new Date(issues[0].created_at).toISOString().slice(0, 10);
 
-        if (!initialized) {
-            // On first run, send messages for the last 20 issues
-            issues.forEach(issue => {
-                newIssues.push(issue);
-                if (!lastCheckedIssueId || issue.id > lastCheckedIssueId) {
-                    lastCheckedIssueId = issue.id;
-                }
-            });
-            initialized = true;
-        } else {
-            // On subsequent runs, only send messages for new issues
-            for (const issue of issues) {
-                if (issue.id > lastCheckedIssueId) {
-                    newIssues.push(issue);
-                    lastCheckedIssueId = issue.id;
-                } else {
-                    break;
-                }
-            }
-        }
-
-        const channel = client.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
-        if (channel) {
-            for (const issue of newIssues.reverse()) {
-                await channel.send(`Good news, a new 'good first issue' was created:\n**${issue.title}** (#${issue.number})\n${issue.html_url}`);
-                console.log(`Message sent for issue #${issue.number}`);
+        if (issueDate === today && (!lastCheckedIssueId || issues[0].id !== lastCheckedIssueId)) {
+            const channel = client.channels.cache.get(process.env.DISCORD_CHANNEL_ID);
+            if (channel) {
+                await channel.send(`Good news, a new 'good first issue' was created today:\n**${issues[0].title}** (#${issues[0].number})\n${issues[0].html_url}`);
+                console.log(`Message sent for issue #${issues[0].number}`);
+                lastCheckedIssueId = issues[0].id;
+            } else {
+                console.error('Channel not found. Please check the DISCORD_CHANNEL_ID in your .env file.');
             }
         } else {
-            console.error('Channel not found. Please check the DISCORD_CHANNEL_ID in your .env file.');
+            console.log('No new "good first issue" created today.');
         }
     } else {
         console.log('No "good first issue" found.');
@@ -87,8 +67,7 @@ const checkNewGoodFirstIssues = async () => {
 
 client.once('ready', () => {
     console.log(`Logged in as ${client.user.tag}!`);
-    checkNewGoodFirstIssues();
-    setInterval(checkNewGoodFirstIssues, CHECK_INTERVAL);
+    checkNewGoodFirstIssues().finally(() => client.destroy()); // Destroy client after sending messages
 });
 
 client.login(DISCORD_TOKEN).catch(console.error);
