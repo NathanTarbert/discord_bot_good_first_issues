@@ -1,4 +1,4 @@
-import { Client, IntentsBitField, TextChannel } from 'discord.js';
+import { Client, IntentsBitField } from 'discord.js';
 import { Octokit } from "@octokit/rest";
 import dotenv from 'dotenv';
 
@@ -6,8 +6,8 @@ dotenv.config();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO_OWNER = "winglang";
-const GITHUB_REPO_NAME = "wing";
+const GITHUB_REPO_OWNER = process.env.GITHUB_REPO_OWNER;
+const GITHUB_REPO_NAME = process.env.GITHUB_REPO_NAME;
 
 const client = new Client({
     intents: [
