@@ -45,3 +45,5 @@ typechain
 
 .vscode
 tsconfig.tsbuildinfo
+
+target
