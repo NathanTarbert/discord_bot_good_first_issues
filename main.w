@@ -6,11 +6,10 @@ bring math;
 let discordToken = new cloud.Secret(name: "discordToken") as "discord token";
 let githubToken = new cloud.Secret(name: "gihub-token") as "github token";
 
+// TODO: maybe read these in via parameters
 let GITHUB_REPO_OWNER = "winglang";
 let GITHUB_REPO_NAME = "wing";
 let discordChannel = "1244081517379063908";
-
-let lastCheckedIssueId = new cloud.Counter(initial: 0);
 
 let discordBaseAPI = "https://discord.com/api/v10";
 
@@ -28,34 +27,22 @@ struct GithubIssue {
   labels: Array<Label>;
 }
 
-struct GithubQueryResponse {
-  issues: Array<GithubIssue>;
-}
-
-
-// TODO: find way to cast just using struct system
-let convertToGithubQueryResponse = inflight (issues: Json): GithubQueryResponse => {
-  let responseIssues: MutArray<GithubIssue> = MutArray<GithubIssue>[];
-  for entry in Json.values(issues) {
-    responseIssues.push(GithubIssue.fromJson(entry));
-  }
-
-  return {
-    issues: responseIssues.copy()
-  };
-};
-
-let fetchIssues = inflight (): GithubQueryResponse? => {
+let fetchIssues = inflight (): Array<GithubIssue>? => {
     try {
-      // TODO: Need to make this just issues created in last 24hrs (open question- if an issue was created x days ago but only recieved good first issue today should it be included)
+      // open question- if an issue was created x days ago but only recieved good first issue today should it be included
       let response = http.get("https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/issues?labels=good%20first%20issue&state=open&sort=created&direction=desc&per_page=10", {
         headers: {
           Authorization: "token {githubToken.value()}"
         }
       });
 
+      let issues = MutArray<GithubIssue>[];
+      for entry in Json.values(Json.parse(response.body)) {
+        issues.push(GithubIssue.fromJson(entry));
+      }
+
       if (response.status == 200) {
-        return convertToGithubQueryResponse(Json.parse(response.body));
+        return issues.copy();
       } else {
         log("Error fetching GitHub issues: {response.status}");
         return nil;
@@ -66,16 +53,17 @@ let fetchIssues = inflight (): GithubQueryResponse? => {
     }
 };
 
-let findIssuesNoOlderThan = inflight (days: num, issues: Array<GithubIssue>): Array<GithubIssue> => {
+let filterIssues = inflight (days: num, issues: Array<GithubIssue>): Array<GithubIssue> => {
   let filteredIssues: MutArray<GithubIssue> = MutArray<GithubIssue>[];
   for issue in issues {
+    // Would be nice if we could find an easy way to do this with dataetime
     let createdDate = datetime.fromIso(issue.created_at);
     let currentTime = datetime.utcNow();
 
     let difference = currentTime.timestampMs - createdDate.timestampMs;
     
-    let twentyForHours = 24 * 60 * 60 * 1000;
-    let daysOld = math.floor(difference / twentyForHours);
+    let oneDayInMilliseconds = 24 * 60 * 60 * 1000;
+    let daysOld = math.floor(difference / oneDayInMilliseconds);
     if daysOld <= days {
       filteredIssues.push(issue);
     }
@@ -84,28 +72,25 @@ let findIssuesNoOlderThan = inflight (days: num, issues: Array<GithubIssue>): Ar
 };
 
 let postIssues = inflight () => {
-  let issues = fetchIssues();
+  if let issues = fetchIssues() {
+    let newFirstIssues = filterIssues(20, issues);
   
-  let newFirstIssues = findIssuesNoOlderThan(1, issues?.issues!);
-
-  let discordMessage: MutArray<str> = MutArray<str>[];
-
-  for issue in newFirstIssues {
-    discordMessage.push(issue.html_url);
+    let discordMessage: MutArray<str> = MutArray<str>[];
+  
+    for issue in newFirstIssues {
+      discordMessage.push(issue.html_url);
+    }
+  
+    let response = http.post("{discordBaseAPI}/channels/{discordChannel}/messages", {
+      headers: {
+        Authorization: "Bot {discordToken.value()}",
+        "Content-Type": "application/json"
+      },
+      body: Json.stringify({
+        content: "*Todays New First Issues*\n============================\n{discordMessage.join("\n")}"
+      })
+    });
   }
-
-  let response = http.post("{discordBaseAPI}/channels/{discordChannel}/messages", {
-    headers: {
-      Authorization: "Bot {discordToken.value()}",
-      "Content-Type": "application/json"
-    },
-    body: Json.stringify({
-      content: "*Todays New First Issues*\n============================\n{discordMessage.join("\n")}"
-    })
-  });
-
-  log("Response:");
-  log(Json.stringify(response));
 };
 
 
