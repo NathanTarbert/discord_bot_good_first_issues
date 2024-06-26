@@ -34,14 +34,11 @@ let fetchIssues = inflight (): Array<GithubIssue>? => {
           Authorization: "token {githubToken.value()}"
         }
       });
-      log(response.body);
 
       let issues = MutArray<GithubIssue>[];
       for entry in Json.values(Json.parse(response.body)) {
         issues.push(GithubIssue.fromJson(entry));
-        log("issues: {issues.join("\n")}");
-      } 
-      
+      }
 
       if (response.status == 200) {
         return issues.copy();
@@ -87,12 +84,11 @@ let postIssues = inflight () => {
     let discordMessage: MutArray<str> = MutArray<str>[];
     for issue in newFirstIssues {
       discordMessage.push(issue.title, issue.html_url);
-      log("These are the issues");
       log("issues url: {issue.html_url}");
       log("issues title {issue.title}"); 
       bucket.put("new_issue_file", issue.html_url);
       let fileData = bucket.get("new_issue_file");
-      log("this is the bucket fileData: {fileData}");
+      log("fileData: {fileData}");
     }
     let response = http.post("{discordBaseAPI}/channels/{discordChannel}/messages", {
       headers: {
@@ -102,9 +98,9 @@ let postIssues = inflight () => {
       body: Json.stringify({
         content: "*A New Good First Issue Has Been Published*\n🚀========================🚀\n{discordMessage.join("\n")}"
       })
-      });
-    }
+    });
+  }
 };
 
-let s = new cloud.Schedule(rate: duration.fromHours(24));
-s.onTick(inflight () => { postIssues(); });
+let s = new cloud.Schedule(rate: duration.fromMinutes(1440));
+s.onTick(postIssues);
